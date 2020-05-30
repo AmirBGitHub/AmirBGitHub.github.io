@@ -390,7 +390,7 @@ tab_style = {
     'background-color': '#1E2130',
     'text-transform': 'uppercase',
     'font-weight': '600',
-    'font-size': '15px',
+    'font-size': '16px',
     'height': 'fit-content',
     'cursor': 'pointer',
 }
@@ -449,7 +449,7 @@ def build_tab_1():
                                                                  country_list],
                                                         value=country_list[0],
                                                     ),
-                                                ], style={'width': 600},
+                                                ], style={'width': 650},
                                             ),
                                         ],
                                     ),
@@ -465,21 +465,18 @@ def build_tab_1():
                                                     options=[
                                                         {"label": "Select All Regions",
                                                          "value": "All"}],
-                                                    values=["All"],
+                                                    value=[],
                                                 ),
                                             ),
                                             html.Div(
                                                 id="region-select-dropdown-outer",
                                                 children=dcc.Dropdown(
                                                     id="region-select",
-                                                    options=[{"label": i, "value": i} for i in
-                                                             init_region],
-                                                    value=init_region[:1],
                                                     multi=True,
                                                     searchable=True,
                                                 ),
                                             ),
-                                        ], style={'marginTop': 30, 'width': 600}
+                                        ], style={'marginTop': 30, 'width': 650}
                                     ),
                                     html.Div(
                                         id="table-container",
@@ -642,8 +639,14 @@ app.layout = html.Div(
             id="banner",
             className="banner",
             children=[
-                html.H6("SmartForceps Data Analytics"),
-                html.Img(src=app.get_asset_url("orb-surgical-logo.png"),
+                html.H6(children="SmartForceps Data Analytics",
+                        style={'color': 'white'}),
+                html.A(html.Button('LEARN MORE',
+                                   className='twelve columns',
+                                   style={'color': 'white'}),
+                       href='https://orbsurgical.com/products/smartforceps',
+                       style={'marginLeft': 550}),
+                html.Img(id="logo", src=app.get_asset_url("orb-surgical-logo.png"),
                          style={'height': '100%'}),
             ],
         ),
@@ -660,41 +663,36 @@ app.layout = html.Div(
 
 @app.callback(
     [
-        Output("region-select-dropdown-outer", "children"),
+        Output("region-select", "value"),
+        Output("region-select", "options"),
         Output("map-title", "children"),
     ],
-    [Input("country-select", "value")],
+    [Input("region-select-all", "value"), Input("country-select", "value")],
 )
-def update_region_dropdown(country_select):
+def update_region_dropdown(select_all, country_select):
     country_raw_data = data_dict[country_select]
     regions = country_raw_data["Hospital Province"].unique()
+    options = [{"label": i, "value": i} for i in regions]
+
+    ctx = dash.callback_context
+    if ctx.triggered[0]["prop_id"].split(".")[0] == "region-select-all":
+        if select_all == ["All"]:
+            value = [i["value"] for i in options]
+        else:
+            value = dash.no_update
+    else:
+        value = regions[:1]
     return (
-        dcc.Dropdown(
-            id="region-select",
-            options=[{"label": i, "value": i} for i in regions],
-            value=regions[:1],
-            multi=True,
-            searchable=True,
-        ),
+        value,
+        options,
         "SmartForceps Case Data in {}".format(country_map[country_select]),
     )
 
 
 @app.callback(
-    Output("region-select", "value"),
-    [Input("region-select-all", "values")],
-    [State("region-select", "options")],
-)
-def update_region_select(select_all, options):
-    if select_all == ["All"]:
-        return [i["value"] for i in options]
-    raise PreventUpdate()
-
-
-@app.callback(
     Output("checklist-container", "children"),
     [Input("region-select", "value")],
-    [State("region-select", "options"), State("region-select-all", "values")],
+    [State("region-select", "options"), State("region-select-all", "value")],
 )
 def update_checklist(selected, select_options, checked):
     if len(selected) < len(select_options) and len(checked) == 0:
@@ -704,7 +702,7 @@ def update_checklist(selected, select_options, checked):
         return dcc.Checklist(
             id="region-select-all",
             options=[{"label": "Select All Regions", "value": "All"}],
-            values=[],
+            value=[],
         )
 
     elif len(selected) == len(select_options) and len(checked) == 1:
@@ -713,7 +711,7 @@ def update_checklist(selected, select_options, checked):
     return dcc.Checklist(
         id="region-select-all",
         options=[{"label": "Select All Regions", "value": "All"}],
-        values=["All"],
+        value=["All"],
     )
 
 
@@ -735,36 +733,41 @@ def update_hospital_datatable(geo_select, country_select):
         "Number of Cases": [],
     }
 
-    if geo_select is not None:
+    ctx = dash.callback_context
+    if ctx.triggered:
+        prop_id = ctx.triggered[0]["prop_id"].split(".")[0]
 
-        for point in geo_select["points"]:
-            provider = point["customdata"][0]
-            dff = country_agg[country_agg["Hospital Name"] == provider]
+        if prop_id == "geo-map" and geo_select is not None:
 
-            geo_data_dict["Hospital Name"].append(point["customdata"][0])
-            geo_data_dict["City"].append(point["customdata"][1])
+            for point in geo_select["points"]:
+                provider = point["customdata"][0]
+                dff = country_agg[country_agg["Hospital Name"] == provider]
 
-            address = dff["Hospital Street Address"].tolist()[0]
-            geo_data_dict["Street Address"].append(address)
+                geo_data_dict["Hospital Name"].append(point["customdata"][0])
+                geo_data_dict["City"].append(point["customdata"][1])
 
-            geo_data_dict["Number of SmartForceps"].append(dff["Number of SmartForceps"]["sum"].tolist()[0])
-            geo_data_dict["Number of Surgeons"].append(dff["Number of Surgeons"]["sum"].tolist()[0])
-            geo_data_dict["Number of Cases"].append(dff["Number of Cases"]["sum"].tolist()[0])
+                address = dff["Hospital Street Address"].tolist()[0]
+                geo_data_dict["Street Address"].append(address)
 
-    geo_data_df = pd.DataFrame(data=geo_data_dict)
+                geo_data_dict["Number of SmartForceps"].append(dff["Number of SmartForceps"]["sum"].tolist()[0])
+                geo_data_dict["Number of Surgeons"].append(dff["Number of Surgeons"]["sum"].tolist()[0])
+                geo_data_dict["Number of Cases"].append(dff["Number of Cases"]["sum"].tolist()[0])
+
+        geo_data_df = pd.DataFrame(data=geo_data_dict)
+        data = geo_data_df.to_dict("rows")
+
+    else:
+        data = [{}]
 
     return dash_table.DataTable(
         id="case-stats-table",
         columns=[{"name": i, "id": i} for i in geo_data_dict.keys()],
-        data=geo_data_df.to_dict("rows"),
-        filtering=True,
-        pagination_mode="fe",
-        pagination_settings={"displayed_pages": 1, "current_page": 0, "page_size": 5},
-        navigation="page",
+        data=data,
+        filter_action="native",
+        page_size=5,
         style_cell={"background-color": "#242a3b", "color": "#7b7d8d"},
         style_as_list_view=False,
         style_header={"background-color": "#1f2536", "padding": "0px 5px"},
-        style_table={'overflowX': 'scroll'}
     )
 
 
